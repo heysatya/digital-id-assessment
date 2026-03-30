@@ -1,3 +1,4 @@
+// File: src/components/AssessmentForm.tsx
 "use client";
 
 import { useState, Suspense } from 'react';
@@ -12,15 +13,15 @@ function AssessmentFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  // Read URL parameters (default to 'test' and 'OTHER' if link is clicked without them)
+  // URL parameters
   const mode = searchParams.get('mode') || 'test';
   const urlStakeholderType = searchParams.get('type') || '';
 
+  // State
   const [responses, setResponses] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [hasConsented, setHasConsented] = useState(false);
+  const [hasConsented, setHasConsented] = useState(false); // New Consent State
   
-  // New Respondent Details State
   const [details, setDetails] = useState({
     respondent_name: '',
     email: '',
@@ -29,11 +30,12 @@ function AssessmentFormContent() {
     stakeholder_type: urlStakeholderType
   });
 
+  // Math for progress tracking
   const totalQuestions = questions.length;
   const answeredCount = Object.keys(responses).length;
   const progress = (answeredCount / totalQuestions) * 100;
   
-  // Check if all questions, details AND consent are filled
+  // The ultimate check: Are details filled? Are questions answered? Is consent checked?
   const isDetailsComplete = details.respondent_name && details.email && details.organization && details.stakeholder_type;
   const isComplete = (answeredCount === totalQuestions) && isDetailsComplete && hasConsented;
 
@@ -49,7 +51,6 @@ function AssessmentFormContent() {
     if (!isComplete) return;
     setIsSubmitting(true);
 
-    // 1. Create Assessment Record with Respondent Metadata
     const { data: assessment, error: assessmentError } = await supabase
       .from('assessments')
       .insert([{
@@ -69,7 +70,6 @@ function AssessmentFormContent() {
       return;
     }
 
-    // 2. Insert Responses
     const responseInserts = Object.entries(responses).map(([qId, val]) => ({
       assessment_id: assessment.id,
       question_id: parseInt(qId),
@@ -77,24 +77,23 @@ function AssessmentFormContent() {
     }));
 
     await supabase.from('responses').insert(responseInserts);
-
-    // 3. Navigate to Thank You page (Admin will view results later)
     router.push(`/thank-you`);
   };
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-8 space-y-8 relative">
+      
       {/* STICKY PROGRESS BAR */}
       <div className="sticky top-0 z-50 bg-slate-50/90 backdrop-blur-md py-4 border-b border-slate-200 shadow-sm mb-8">
         <div className="flex justify-between items-end mb-2">
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Trident Maturity Assessment</h2>
+            <h2 className="text-xl font-bold text-slate-800">Barbados Digital ID Governance Assessment</h2>
             <div className="flex items-center gap-2 mt-1">
                <span className={`px-2 py-0.5 rounded text-xs font-bold ${mode === 'live' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
                  {mode.toUpperCase()} MODE
                </span>
                <p className="text-sm text-slate-500">
-                 {isComplete ? "🎉 Ready to submit." : "Please complete all details and questions."}
+                 {isComplete ? "🎉 Ready to submit." : "Please complete details, questions, and consent."}
                </p>
             </div>
           </div>
@@ -194,13 +193,13 @@ function AssessmentFormContent() {
             className="mt-1 w-5 h-5 cursor-pointer" 
           />
           <label htmlFor="consent" className="text-sm text-slate-600 cursor-pointer">
-            <strong>Data Privacy Consent:</strong> I agree that my responses will be securely stored and aggregated for the purpose of the Trident Maturity Assessment.
+            <strong>Data Privacy Consent:</strong> I agree that my responses will be securely stored and aggregated for the purpose of the Barbados Digital ID Governance Assessment.
           </label>
         </div>
 
         {!isComplete && (
           <p className="text-red-500 text-sm font-medium mb-2">
-            Please fill out all details, answer all {totalQuestions} questions, and check the consent box.
+            Please fill out all required profile details, answer all {totalQuestions} questions, and check the consent box.
           </p>
         )}
         <Button onClick={handleSubmit} disabled={!isComplete || isSubmitting} size="lg" className="w-full md:w-auto px-12 text-lg h-14">

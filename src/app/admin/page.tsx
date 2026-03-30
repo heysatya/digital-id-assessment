@@ -22,9 +22,12 @@ export default function AdminDashboard() {
   // Filter State (Segregate Test vs Live)
   const [activeMode, setActiveMode] = useState<'live' | 'test'>('live');
 
+  // Deletion State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple frontend lock for MVP. 
     if (passcode === 'DigitalIDAssessmentAdmin') setIsAuthenticated(true);
     else alert('Incorrect Passcode');
   };
@@ -71,17 +74,12 @@ export default function AdminDashboard() {
   }
 
   // --- AGGREGATION LOGIC ---
-  // 1. Filter assessments by the active mode (Live vs Test)
   const filteredAssessments = assessments.filter(a => a.environment_mode === activeMode);
   const filteredAssessmentIds = filteredAssessments.map(a => a.id);
-  
-  // 2. Grab only the responses that belong to those filtered assessments
   const filteredResponses = allResponses.filter(r => filteredAssessmentIds.includes(r.assessment_id));
-  
-  // 3. Run the macro-math
   const aggregatedData = filteredResponses.length > 0 ? calculateAggregatedScores(filteredResponses) : null;
 
-  // NEW: CSV Export Logic
+  // --- CSV EXPORT LOGIC ---
   const handleExportCSV = () => {
     const headers = ["Date", "Name", "Organization", "Group", "Mode"];
     const rows = filteredAssessments.map(a => [
@@ -101,6 +99,46 @@ export default function AdminDashboard() {
     link.click();
     document.body.removeChild(link);
   };
+
+  // --- DELETION LOGIC ---
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleDelete = async () => {
+    if (!selectedIds.length || !window.confirm(`Are you sure you want to delete ${selectedIds.length} assessment(s)? This cannot be undone.`)) return;
+    setIsDeleting(true);
+
+    const { error } = await supabase.from('assessments').delete().in('id', selectedIds);
+
+    if (error) {
+      alert("Error deleting data: " + error.message);
+    } else {
+      setAssessments(prev => prev.filter(a => !selectedIds.includes(a.id)));
+      setSelectedIds([]);
+      alert("Selected records deleted successfully.");
+    }
+    setIsDeleting(false);
+  };
+
+  // NEW: Reset All Test Data Logic
+  const handleResetTestData = async () => {
+    if (!window.confirm("CRITICAL WARNING: Are you absolutely sure you want to wipe ALL test data? This cannot be undone.")) return;
+    setIsDeleting(true);
+
+    const { error } = await supabase.from('assessments').delete().eq('environment_mode', 'test');
+
+    if (error) {
+      alert("Error resetting test data: " + error.message);
+    } else {
+      setAssessments(prev => prev.filter(a => a.environment_mode !== 'test'));
+      setSelectedIds([]);
+      alert("All test data has been successfully wiped. You have a clean slate.");
+    }
+    setIsDeleting(false);
+  };
   
   return (
     <main className="min-h-screen bg-slate-50 p-4 md:p-8">
@@ -112,8 +150,19 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-bold text-slate-900">Macro-Level Dashboard</h1>
             <p className="text-slate-500">Aggregated view of Trident Framework maturity.</p>
           </div>
-          <div className="flex items-center gap-4">
-            {/* NEW EXPORT BUTTON */}
+          <div className="flex flex-wrap items-center gap-4">
+            
+            {/* NEW: RESET TEST DATA BUTTON (Only shows in Test Mode) */}
+            {activeMode === 'test' && filteredAssessments.length > 0 && (
+              <button 
+                onClick={handleResetTestData}
+                disabled={isDeleting}
+                className="text-sm text-red-600 hover:text-red-800 font-bold underline disabled:opacity-50"
+              >
+                {isDeleting ? "Wiping..." : "⚠️ Reset All Test Data"}
+              </button>
+            )}
+
             <button 
               onClick={handleExportCSV}
               className="text-sm text-slate-600 hover:text-blue-600 font-medium underline"
@@ -123,13 +172,13 @@ export default function AdminDashboard() {
             
             <div className="flex bg-slate-200 p-1 rounded-lg">
               <button 
-                onClick={() => setActiveMode('live')}
+                onClick={() => { setActiveMode('live'); setSelectedIds([]); }}
                 className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeMode === 'live' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 LIVE DATA
               </button>
               <button 
-                onClick={() => setActiveMode('test')}
+                onClick={() => { setActiveMode('test'); setSelectedIds([]); }}
                 className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeMode === 'test' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 TEST DATA
@@ -191,11 +240,41 @@ export default function AdminDashboard() {
             </div>
 
             {/* INDIVIDUAL SUBMISSIONS TABLE */}
-            <h2 className="text-xl font-bold text-slate-800 mt-12 mb-4">Individual Submissions ({filteredAssessments.length})</h2>
+            <div className="flex justify-between items-end mt-12 mb-4">
+              <h2 className="text-xl font-bold text-slate-800">Individual Submissions ({filteredAssessments.length})</h2>
+              
+              {/* BULK DELETE ACTION BAR */}
+              {selectedIds.length > 0 && (
+                <div className="flex items-center gap-4 bg-red-50 px-4 py-2 rounded-lg border border-red-200">
+                  <span className="text-red-800 text-sm font-medium">{selectedIds.length} selected</span>
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={handleDelete} 
+                    disabled={isDeleting}
+                    className="bg-red-600 hover:bg-red-700 h-8"
+                  >
+                    {isDeleting ? "Deleting..." : "Delete Permanently"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-slate-100 text-slate-600 border-b">
                   <tr>
+                    <th className="p-4 w-12 text-center">
+                      <input 
+                        type="checkbox" 
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedIds(filteredAssessments.map(a => a.id));
+                          else setSelectedIds([]);
+                        }}
+                        checked={selectedIds.length === filteredAssessments.length && filteredAssessments.length > 0}
+                        className="cursor-pointer w-4 h-4 mt-1"
+                      />
+                    </th>
                     <th className="p-4 font-semibold">Date</th>
                     <th className="p-4 font-semibold">Name</th>
                     <th className="p-4 font-semibold">Organization</th>
@@ -205,7 +284,15 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y">
                   {filteredAssessments.map((a) => (
-                    <tr key={a.id} className="hover:bg-slate-50 transition-colors">
+                    <tr key={a.id} className={`transition-colors ${selectedIds.includes(a.id) ? 'bg-blue-50/50 hover:bg-blue-50' : 'hover:bg-slate-50'}`}>
+                      <td className="p-4 text-center">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedIds.includes(a.id)} 
+                          onChange={() => toggleSelect(a.id)}
+                          className="cursor-pointer w-4 h-4 mt-1"
+                        />
+                      </td>
                       <td className="p-4 text-slate-500">{new Date(a.created_at).toLocaleDateString()}</td>
                       <td className="p-4 font-medium text-slate-900">{a.respondent_name || 'Anonymous'}</td>
                       <td className="p-4 text-slate-600">{a.organization || 'N/A'}</td>
