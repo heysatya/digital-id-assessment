@@ -1,6 +1,65 @@
-import { createClient } from '@supabase/supabase-js';
+// File: src/lib/scoring.ts
+import { questions } from '../data/questions';
+import { AssessmentResponse } from '../types';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Map raw responses to 0-4 scale
+export const mapResponseToScore = (responseType: string, value: string): number => {
+  if (responseType === 'likert') return parseInt(value) - 1; // 1->0, 2->1, 3->2, 4->3, 5->4
+  if (responseType === 'yes_no') return value === 'yes' ? 4 : 0;
+  if (responseType === 'percentage') {
+    if (value === 'lt25') return 1;
+    if (value === '25-50') return 2;
+    if (value === '51-75') return 3;
+    if (value === 'gt75') return 4;
+  }
+  return 0;
+};
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// Calculate Maturity Level
+export const getMaturityLevel = (score: number): string => {
+  if (score <= 1) return 'Basic';
+  if (score <= 2) return 'Opportunistic';
+  if (score <= 3) return 'Systematic';
+  if (score <= 3.5) return 'Differentiating';
+  return 'Transformative';
+};
+
+// Main scoring engine
+export const calculateScores = (responses: AssessmentResponse) => {
+  let totalWeightedScore = 0;
+  let totalMaxWeight = 0;
+
+  const pillarScores: Record<string, { current: number; max: number }> = {};
+  
+  questions.forEach((q) => {
+    const rawVal = responses[q.id];
+    if (!rawVal) return;
+
+    const baseScore = mapResponseToScore(q.responseType, rawVal);
+    const weightedScore = baseScore * q.weight;
+    const maxQuestionScore = 4 * q.weight;
+
+    // Overall
+    totalWeightedScore += weightedScore;
+    totalMaxWeight += maxQuestionScore;
+
+    // Pillar specific
+    if (!pillarScores[q.pillar]) pillarScores[q.pillar] = { current: 0, max: 0 };
+    pillarScores[q.pillar].current += weightedScore;
+    pillarScores[q.pillar].max += maxQuestionScore;
+  });
+
+  const overallScore = totalMaxWeight > 0 ? (totalWeightedScore / totalMaxWeight) * 4 : 0;
+  
+  const pillarBreakdown = Object.entries(pillarScores).map(([pillar, data]) => ({
+    name: pillar.split(' · ')[1] || pillar, // Clean name
+    score: data.max > 0 ? Number(((data.current / data.max) * 4).toFixed(2)) : 0,
+    fullMark: 4,
+  }));
+
+  return {
+    overallScore: Number(overallScore.toFixed(2)),
+    maturityLevel: getMaturityLevel(overallScore),
+    pillarBreakdown,
+  };
+};
