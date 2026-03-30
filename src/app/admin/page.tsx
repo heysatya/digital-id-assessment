@@ -81,6 +81,27 @@ export default function AdminDashboard() {
   // 3. Run the macro-math
   const aggregatedData = filteredResponses.length > 0 ? calculateAggregatedScores(filteredResponses) : null;
 
+  // NEW: CSV Export Logic
+  const handleExportCSV = () => {
+    const headers = ["Date", "Name", "Organization", "Group", "Mode"];
+    const rows = filteredAssessments.map(a => [
+      new Date(a.created_at).toLocaleDateString(),
+      `"${a.respondent_name || 'Anonymous'}"`,
+      `"${a.organization || 'N/A'}"`,
+      a.stakeholder_type,
+      a.environment_mode
+    ].join(','));
+    
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `trident_assessments_${activeMode}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
   return (
     <main className="min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -91,19 +112,29 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-bold text-slate-900">Macro-Level Dashboard</h1>
             <p className="text-slate-500">Aggregated view of Trident Framework maturity.</p>
           </div>
-          <div className="flex bg-slate-200 p-1 rounded-lg">
+          <div className="flex items-center gap-4">
+            {/* NEW EXPORT BUTTON */}
             <button 
-              onClick={() => setActiveMode('live')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeMode === 'live' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
+              onClick={handleExportCSV}
+              className="text-sm text-slate-600 hover:text-blue-600 font-medium underline"
             >
-              LIVE DATA
+              Export Data to CSV
             </button>
-            <button 
-              onClick={() => setActiveMode('test')}
-              className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeMode === 'test' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              TEST DATA
-            </button>
+            
+            <div className="flex bg-slate-200 p-1 rounded-lg">
+              <button 
+                onClick={() => setActiveMode('live')}
+                className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeMode === 'live' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                LIVE DATA
+              </button>
+              <button 
+                onClick={() => setActiveMode('test')}
+                className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeMode === 'test' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                TEST DATA
+              </button>
+            </div>
           </div>
         </div>
 

@@ -18,6 +18,7 @@ function AssessmentFormContent() {
 
   const [responses, setResponses] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasConsented, setHasConsented] = useState(false);
   
   // New Respondent Details State
   const [details, setDetails] = useState({
@@ -32,9 +33,9 @@ function AssessmentFormContent() {
   const answeredCount = Object.keys(responses).length;
   const progress = (answeredCount / totalQuestions) * 100;
   
-  // Check if all questions AND required details are filled
+  // Check if all questions, details AND consent are filled
   const isDetailsComplete = details.respondent_name && details.email && details.organization && details.stakeholder_type;
-  const isComplete = (answeredCount === totalQuestions) && isDetailsComplete;
+  const isComplete = (answeredCount === totalQuestions) && isDetailsComplete && hasConsented;
 
   const handleOptionChange = (questionId: number, value: string) => {
     setResponses(prev => ({ ...prev, [questionId]: value }));
@@ -182,9 +183,24 @@ function AssessmentFormContent() {
 
       {/* SUBMIT FOOTER */}
       <div className="sticky bottom-0 z-50 bg-slate-50/90 backdrop-blur-md py-4 border-t border-slate-200 text-center mt-12">
+        
+        {/* NEW CONSENT CHECKBOX */}
+        <div className="max-w-xl mx-auto flex items-start gap-3 mb-4 text-left bg-white p-4 rounded-lg border shadow-sm">
+          <input 
+            type="checkbox" 
+            id="consent" 
+            checked={hasConsented} 
+            onChange={(e) => setHasConsented(e.target.checked)} 
+            className="mt-1 w-5 h-5 cursor-pointer" 
+          />
+          <label htmlFor="consent" className="text-sm text-slate-600 cursor-pointer">
+            <strong>Data Privacy Consent:</strong> I agree that my responses will be securely stored and aggregated for the purpose of the Trident Maturity Assessment.
+          </label>
+        </div>
+
         {!isComplete && (
           <p className="text-red-500 text-sm font-medium mb-2">
-            Please fill out your profile details and answer all {totalQuestions} questions to submit.
+            Please fill out all details, answer all {totalQuestions} questions, and check the consent box.
           </p>
         )}
         <Button onClick={handleSubmit} disabled={!isComplete || isSubmitting} size="lg" className="w-full md:w-auto px-12 text-lg h-14">

@@ -66,10 +66,18 @@ export default function ResultsDashboard({ assessmentId }: { assessmentId: strin
                {assessment.environment_mode?.toUpperCase()}
              </span>
           </div>
-          <div className="flex items-center justify-end gap-2 mt-2">
+          
+          {/* EXPORT BUTTONS (Hidden during printing) */}
+          <div className="flex items-center justify-end gap-2 mt-2 print:hidden">
             <p className="text-slate-400 bg-slate-50 px-2 py-1 rounded text-xs font-mono border">
               Ref: {assessmentId.split('-')[0].toUpperCase()}
             </p>
+            <button 
+              onClick={() => window.print()}
+              className="text-sm bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 transition-colors"
+            >
+              Save as PDF
+            </button>
           </div>
         </div>
       </div>
