@@ -1,0 +1,27 @@
+digital-id-assessment/
+├── public/
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   ├── assessment/
+│   │   │   └── page.tsx
+│   │   └── results/
+│   │       └── [id]/
+│   │           └── page.tsx
+│   ├── components/
+│   │   ├── AssessmentForm.tsx
+│   │   ├── ResultsDashboard.tsx
+│   │   └── ui/             # shadcn/ui components (button, card, progress, etc.)
+│   ├── data/
+│   │   └── questions.ts    # Extracted JSON dataset with typed interfaces
+│   ├── lib/
+│   │   ├── supabase.ts     # Supabase client initialization
+│   │   ├── scoring.ts      # Scoring engine and maturity model logic
+│   │   └── utils.ts        # Tailwind merge utils (standard shadcn)
+│   └── types/
+│       └── index.ts        # TypeScript interfaces
+├── .env.local
+├── tailwind.config.ts
+├── tsconfig.json
+└── package.json
