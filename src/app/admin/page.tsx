@@ -148,7 +148,7 @@ export default function AdminDashboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b pb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Macro-Level Dashboard</h1>
-            <p className="text-slate-500">Aggregated view of Trident Framework maturity.</p>
+            <p className="text-slate-500">Aggregated View of Digital ID Governance Maturity.</p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
             
