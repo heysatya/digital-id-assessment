@@ -81,7 +81,7 @@ export default function AdminDashboard() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `trident_assessments_${activeMode}.csv`);
+    link.setAttribute("download", `digital_id_assessments_${activeMode}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -154,8 +154,8 @@ export default function AdminDashboard() {
         {/* Header & Filters */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b pb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Macro-Level Dashboard</h1>
-            <p className="text-slate-500">Aggregated view of Trident Framework maturity.</p>
+            <h1 className="text-3xl font-bold text-slate-900">Macro-Level Dashboard of Digital ID Governance Assessment</h1>
+            <p className="text-slate-500">Aggregated View of Barbados Digital ID Governance Maturity.</p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
             {activeMode === 'test' && filteredAssessments.length > 0 && (
