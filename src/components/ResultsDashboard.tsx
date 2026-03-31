@@ -114,10 +114,20 @@ export default function ResultsDashboard({ assessmentId }: { assessmentId: strin
       <Card>
         <CardHeader><CardTitle>Detailed Pillar Scores</CardTitle></CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={data.pillarBreakdown} layout="vertical" margin={{ left: 150 }}>
-              <XAxis type="number" domain={[0, 4]} />
-              <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 12 }} />
+          <ResponsiveContainer width="100%" height={450}>
+            <BarChart data={data.pillarBreakdown} layout="vertical" margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+              <XAxis type="number" domain={[0, 4]} tick={{ fontSize: 11, fill: '#475569' }} />
+              <YAxis 
+                type="category" 
+                dataKey="name" 
+                width={250} 
+                tick={{ 
+                  fontSize: 11, 
+                  fill: '#475569', 
+                  textAnchor: 'start', 
+                  dx: -240 
+                }} 
+              />
               <Tooltip cursor={{fill: '#f1f5f9'}} />
               <Bar dataKey="score" fill="#2563eb" radius={[0, 4, 4, 0]} />
             </BarChart>
