@@ -197,7 +197,7 @@ export default function AdminDashboard() {
           </div>
           <div className="flex flex-wrap items-center gap-4">
             
-            {/* NEW: UPLOAD FRAMEWORK BUTTON */}
+            {/* UPLOAD FRAMEWORK BUTTON - TEMPORARILY DISABLED 
             <div>
               <input 
                 type="file" 
@@ -215,7 +215,8 @@ export default function AdminDashboard() {
                 {isUploading ? "Uploading..." : "📤 Upload Framework CSV"}
               </Button>
             </div>
-
+            */}
+            
             {activeMode === 'test' && filteredAssessments.length > 0 && (
               <button onClick={handleResetTestData} disabled={isDeleting} className="text-sm text-red-600 hover:text-red-800 font-bold underline disabled:opacity-50">
                 {isDeleting ? "Wiping..." : "⚠️ Reset All Test Data"}
