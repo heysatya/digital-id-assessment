@@ -1,10 +1,11 @@
 // File: src/app/admin/page.tsx
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { calculateAggregatedScores } from '@/lib/scoring';
 import Link from 'next/link';
+import Papa from 'papaparse'; // NEW: The CSV Parser
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, BarChart, XAxis, YAxis, Tooltip, Bar } from 'recharts';
@@ -20,6 +21,10 @@ export default function AdminDashboard() {
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // NEW: Upload State
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +72,53 @@ export default function AdminDashboard() {
   const filteredResponses = allResponses.filter(r => filteredAssessmentIds.includes(r.assessment_id));
   const aggregatedData = filteredResponses.length > 0 ? calculateAggregatedScores(filteredResponses) : null;
 
+  // --- NEW: FRAMEWORK UPLOAD LOGIC ---
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          // 1. Map Excel columns to Database columns
+          const formattedData = results.data.map((row: any) => ({
+            pillar: row['Pillar'],
+            subpillar: row['Subpillar'],
+            question: row['Question'],
+            response_type: row['Response Type'],
+            score_mapping: row['Score Mapping'],
+            weight: parseFloat(row['Weight']) || 1, // Fallback to 1 if empty
+            primary_stakeholder: row['Primary Stakeholder'],
+            secondary_stakeholder: row['Secondary Stakeholder']
+          }));
+
+          // 2. Clear out the old framework questions safely
+          const { error: deleteError } = await supabase.from('framework_questions').delete().neq('id', 0);
+          if (deleteError) throw deleteError;
+
+          // 3. Insert the new spreadsheet data
+          const { error: insertError } = await supabase.from('framework_questions').insert(formattedData);
+          if (insertError) throw insertError;
+
+          alert(`Success! Uploaded ${formattedData.length} questions to the database.`);
+        } catch (error: any) {
+          alert('Error uploading to database: ' + error.message);
+        } finally {
+          setIsUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = ''; // Reset input
+        }
+      },
+      error: (error) => {
+        alert('Error parsing the CSV file: ' + error.message);
+        setIsUploading(false);
+      }
+    });
+  };
+
   const handleExportCSV = () => {
     const headers = ["Date", "Name", "Organization", "Group", "Mode"];
     const rows = filteredAssessments.map(a => [
@@ -87,32 +139,22 @@ export default function AdminDashboard() {
     document.body.removeChild(link);
   };
 
-// --- DELETION LOGIC (BULLETPROOF) ---
   const toggleSelect = (id: string) => {
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
   const handleDelete = async () => {
     if (!selectedIds.length || !window.confirm(`Are you sure you want to delete ${selectedIds.length} assessment(s)? This cannot be undone.`)) return;
     setIsDeleting(true);
 
-    // 1. Manually delete all linked responses first (bypasses SQL strictness)
     const { error: responseError } = await supabase.from('responses').delete().in('assessment_id', selectedIds);
-    if (responseError) {
-      alert("Error clearing responses: " + responseError.message);
-      setIsDeleting(false); return;
-    }
+    if (responseError) { alert("Error clearing responses: " + responseError.message); setIsDeleting(false); return; }
 
-    // 2. Delete the assessments and confirm they were actually removed (.select())
     const { data, error } = await supabase.from('assessments').delete().in('id', selectedIds).select();
 
-    if (error) {
-      alert("Database Error: " + error.message);
-    } else if (!data || data.length === 0) {
-      alert("⚠️ Deletion Blocked! Your database security (RLS) is still preventing deletions. Please run the SQL command.");
-    } else {
+    if (error) { alert("Database Error: " + error.message); } 
+    else if (!data || data.length === 0) { alert("⚠️ Deletion Blocked by Database Security."); } 
+    else {
       setAssessments(prev => prev.filter(a => !selectedIds.includes(a.id)));
       setSelectedIds([]);
       alert("Selected records deleted successfully.");
@@ -128,18 +170,14 @@ export default function AdminDashboard() {
     const testIds = testAssessments.map(a => a.id);
 
     if (testIds.length > 0) {
-      // 1. Delete linked responses first
       await supabase.from('responses').delete().in('assessment_id', testIds);
     }
 
-    // 2. Delete test assessments
     const { data, error } = await supabase.from('assessments').delete().eq('environment_mode', 'test').select();
 
-    if (error) {
-      alert("Database Error: " + error.message);
-    } else if (!data || data.length === 0) {
-       alert("⚠️ Deletion Blocked! Row Level Security (RLS) prevented the deletion.");
-    } else {
+    if (error) { alert("Database Error: " + error.message); } 
+    else if (!data || data.length === 0) { alert("⚠️ Deletion Blocked by Database Security."); } 
+    else {
       setAssessments(prev => prev.filter(a => a.environment_mode !== 'test'));
       setSelectedIds([]);
       alert("All test data has been successfully wiped. You have a clean slate.");
@@ -154,18 +192,40 @@ export default function AdminDashboard() {
         {/* Header & Filters */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b pb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Macro-Level Dashboard of Digital ID Governance Assessment</h1>
-            <p className="text-slate-500">Aggregated View of Barbados Digital ID Governance Maturity.</p>
+            <h1 className="text-3xl font-bold text-slate-900">Digital ID Governance Assessment Dashboard</h1>
+            <p className="text-slate-500">Aggregated view of Digital ID Governance Maturity.</p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
+            
+            {/* NEW: UPLOAD FRAMEWORK BUTTON */}
+            <div>
+              <input 
+                type="file" 
+                accept=".csv" 
+                ref={fileInputRef} 
+                onChange={handleFileUpload} 
+                className="hidden" 
+              />
+              <Button 
+                onClick={() => fileInputRef.current?.click()} 
+                disabled={isUploading}
+                variant="outline"
+                className="bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 font-medium"
+              >
+                {isUploading ? "Uploading..." : "📤 Upload Framework CSV"}
+              </Button>
+            </div>
+
             {activeMode === 'test' && filteredAssessments.length > 0 && (
               <button onClick={handleResetTestData} disabled={isDeleting} className="text-sm text-red-600 hover:text-red-800 font-bold underline disabled:opacity-50">
                 {isDeleting ? "Wiping..." : "⚠️ Reset All Test Data"}
               </button>
             )}
+            
             <button onClick={handleExportCSV} className="text-sm text-slate-600 hover:text-blue-600 font-medium underline">
               Export Data to CSV
             </button>
+            
             <div className="flex bg-slate-200 p-1 rounded-lg">
               <button onClick={() => { setActiveMode('live'); setSelectedIds([]); }} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeMode === 'live' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>LIVE DATA</button>
               <button onClick={() => { setActiveMode('test'); setSelectedIds([]); }} className={`px-4 py-2 rounded-md text-sm font-bold transition-all ${activeMode === 'test' ? 'bg-white shadow-sm text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}>TEST DATA</button>
@@ -182,7 +242,7 @@ export default function AdminDashboard() {
         ) : (
           <div className="space-y-8">
             
-            {/* ROW 1: SCORE CARD (Centered and spacious) */}
+            {/* ROW 1: SCORE CARD */}
             <div className="grid md:grid-cols-3 gap-6">
               <Card className="md:col-start-2 bg-slate-900 border-slate-800 text-center flex flex-col justify-center py-8 shadow-lg">
                 <CardHeader>
@@ -198,10 +258,8 @@ export default function AdminDashboard() {
               </Card>
             </div>
 
-            {/* ROW 2: THE CHARTS (50/50 Split with massive height) */}
+            {/* ROW 2: THE CHARTS */}
             <div className="grid lg:grid-cols-2 gap-8">
-              
-              {/* RADAR CHART FIX: Smaller outerRadius, taller height */}
               <Card className="shadow-sm">
                 <CardHeader><CardTitle className="text-slate-800">Pillar Footprint</CardTitle></CardHeader>
                 <CardContent>
@@ -216,24 +274,14 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
 
-              {/* BAR CHART: Horizontal with Left-Justified Labels */}
+              {/* HORIZONTAL LEFT-JUSTIFIED BAR CHART */}
               <Card className="shadow-sm">
                 <CardHeader><CardTitle className="text-slate-800">Pillar Averages</CardTitle></CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={450}>
                     <BarChart data={aggregatedData.pillarBreakdown} layout="vertical" margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
                       <XAxis type="number" domain={[0, 4]} tick={{ fontSize: 11, fill: '#475569' }} />
-                      <YAxis 
-                        type="category" 
-                        dataKey="name" 
-                        width={250} 
-                        tick={{ 
-                          fontSize: 11, 
-                          fill: '#475569', 
-                          textAnchor: 'start', 
-                          dx: -240 // This pushes the text to the absolute far left edge!
-                        }} 
-                      />
+                      <YAxis type="category" dataKey="name" width={250} tick={{ fontSize: 11, fill: '#475569', textAnchor: 'start', dx: -240 }} />
                       <Tooltip cursor={{fill: '#f1f5f9'}} />
                       <Bar dataKey="score" fill="#2563eb" radius={[0, 4, 4, 0]} />
                     </BarChart>
