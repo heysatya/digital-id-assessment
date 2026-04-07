@@ -100,9 +100,20 @@ export default function ResultsDashboard({ assessmentId }: { assessmentId: strin
           <CardHeader><CardTitle>Pillar Footprint</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data.pillarBreakdown}>
+              <RadarChart cx="50%" cy="50%" outerRadius="55%" data={data.pillarBreakdown}>
                 <PolarGrid />
-                <PolarAngleAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <PolarAngleAxis 
+                  dataKey="name" 
+                  tick={({ payload, x, y, textAnchor, stroke, radius }: any) => {
+                    const parts = payload.value.split(' · ');
+                    return (
+                      <text radius={radius} stroke={stroke} x={x} y={y} textAnchor={textAnchor} fill="#64748b" fontSize={10} fontWeight={500}>
+                        <tspan x={x} dy="0">{parts[0]}</tspan>
+                        {parts[1] && <tspan x={x} dy="14">{parts[1]}</tspan>}
+                      </text>
+                    );
+                  }} 
+                />
                 <PolarRadiusAxis angle={30} domain={[0, 4]} />
                 <Radar name="Score" dataKey="score" stroke="#2563eb" fill="#3b82f6" fillOpacity={0.4} />
               </RadarChart>
@@ -148,27 +159,50 @@ export default function ResultsDashboard({ assessmentId }: { assessmentId: strin
               <CardTitle className="text-lg text-slate-800">{pillar}</CardTitle>
             </CardHeader>
             <CardContent className="p-0 divide-y divide-slate-100">
-              {Object.entries(groupedByPillar[pillar]).map(([subpillar, qs]) => (
+              {Object.entries(groupedByPillar[pillar]).map(([subpillar, qs]) => {
+                // HIDE questions that were never assigned to this stakeholder
+                const relevantQs = qs.filter(q => 
+                  q.primaryStakeholder === assessment.stakeholder_type || 
+                  q.secondaryStakeholder === assessment.stakeholder_type || 
+                  q.secondaryStakeholder === 'NONE'
+                );
+
+                if (relevantQs.length === 0) return null;
+
+                return (
                 <div key={subpillar} className="p-4 md:p-6 bg-white">
                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">{subpillar}</h3>
                   <div className="space-y-3">
-                    {qs.map((q) => (
+                    {relevantQs.map((q) => {
+                      const rawValue = rawResponses[q.id];
+                      let displayValue = 'Skipped';
+                      if (rawValue !== undefined && rawValue !== null) {
+                        const matchedAnchor = q.anchors?.find(a => a.value === rawValue);
+                        if (matchedAnchor) {
+                          displayValue = q.responseType === 'likert' ? `${matchedAnchor.label}: ${matchedAnchor.description}` : matchedAnchor.label;
+                        } else if (q.responseType === 'percentage') {
+                          if (rawValue === 'lt25') displayValue = '< 25%';
+                          else if (rawValue === 'gt75') displayValue = '> 75%';
+                          else displayValue = rawValue;
+                        } else {
+                          displayValue = rawValue;
+                        }
+                      }
+
+                      return (
                       <div key={q.id} className="flex flex-col md:flex-row md:items-start justify-between gap-4 text-sm hover:bg-slate-50 p-2 rounded-md transition-colors">
                         <span className="text-slate-700 font-medium md:w-3/4">{q.question}</span>
                         <div className="md:w-1/4 flex justify-end">
-                          <span className="font-bold text-blue-700 bg-blue-50 border border-blue-100 px-3 py-1 rounded-full whitespace-nowrap shadow-sm">
-                            {rawResponses[q.id] 
-                              ? (q.responseType === 'percentage' && rawResponses[q.id] === 'lt25' ? '< 25%' :
-                                 q.responseType === 'percentage' && rawResponses[q.id] === 'gt75' ? '> 75%' : 
-                                 rawResponses[q.id]) 
-                              : 'Skipped'}
+                          <span className={`font-bold text-blue-700 bg-blue-50 border border-blue-100 px-3 py-1 rounded-full text-center shadow-sm ${displayValue === 'Skipped' ? 'opacity-50 text-slate-500 bg-slate-100 border-slate-200' : ''}`}>
+                            {displayValue}
                           </span>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
-              ))}
+              )})}
             </CardContent>
           </Card>
         ))}

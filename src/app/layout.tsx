@@ -1,9 +1,12 @@
 // File: src/app/layout.tsx
+import { Inter } from 'next/font/google';
 import "./globals.css";
 
+const inter = Inter({ subsets: ['latin'] });
+
 export const metadata = {
-  title: "Digital ID Assessment",
-  description: "Maturity Assessment Tool for Digital ID Systems",
+  title: "Barbados | Digital ID Governance Assessment",
+  description: "Comprehensive maturity assessment framework for the diagnostic evaluation of digital ID systems based on UNDP and DPI Safeguards principles.",
 };
 
 export default function RootLayout({
@@ -13,7 +16,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className={`${inter.className} min-h-screen bg-slate-50 antialiased`}>
+        {children}
+      </body>
     </html>
   );
 }

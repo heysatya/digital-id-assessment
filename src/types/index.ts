@@ -1,5 +1,11 @@
 export type ResponseType = 'likert' | 'yes_no' | 'percentage';
 
+export interface Anchor {
+  value: string;
+  label: string;
+  description?: string;
+}
+
 export interface Question {
   id: number;
   pillar: string;
@@ -9,6 +15,7 @@ export interface Question {
   weight: number;
   primaryStakeholder: string;
   secondaryStakeholder: string;
+  anchors?: Anchor[];
 }
 
 export interface AssessmentResponse {

@@ -76,7 +76,7 @@ const rawQuestions = [
   },
   {
     "pillar": "P1 · Legal & Regulatory Foundations",
-    "subpillar": "1.4 Digital Signature, Trust Services & AI/ADM Law", "question": "How comprehensive is the legal framework governing digital signatures and automated decision-making?",
+    "subpillar": "1.4 Digital Signature, Trust Services & AI Law", "question": "How comprehensive is the legal framework governing digital signatures and automated decision-making?",
     "responseType": "likert",
     "weight": 3,
     "primaryStakeholder": "REG",
@@ -84,7 +84,7 @@ const rawQuestions = [
   },
   {
     "pillar": "P1 · Legal & Regulatory Foundations",
-    "subpillar": "1.4 Digital Signature, Trust Services & AI/ADM Law",
+    "subpillar": "1.4 Digital Signature, Trust Services & AI Law",
     "question": "Are there active legal safeguards for automated decision-making using Trident data?",
     "responseType": "yes_no",
     "weight": 3,
@@ -642,11 +642,52 @@ const rawQuestions = [
   }
 ];
 
-export const questions: Question[] = rawQuestions.map((q, index) => ({
-  ...q,
-  id: index,
-  responseType: q.responseType as 'likert' | 'yes_no' | 'percentage',
-}));
+export const questions: Question[] = rawQuestions.map((q, index) => {
+  let anchors: any[] = [];
+  
+  if (q.responseType === 'likert') {
+    if (q.pillar.startsWith('P1')) {
+      anchors = [
+        { value: '0', label: '0', description: 'No legal framework exists' },
+        { value: '1', label: '1', description: 'Draft legislation under development or review' },
+        { value: '2', label: '2', description: 'Legislation enacted but not yet operational' },
+        { value: '3', label: '3', description: 'Legislation operational but with implementation gaps or limited enforcement' },
+        { value: '4', label: '4', description: 'Fully operational with effective oversight' }
+      ];
+    } else {
+      anchors = [
+        { value: '0', label: '0', description: 'Not at all - No evidence' },
+        { value: '1', label: '1', description: 'Minimally - Very limited evidence' },
+        { value: '2', label: '2', description: 'Partially - Some evidence, inconsistent' },
+        { value: '3', label: '3', description: 'Substantially - Strong evidence, implemented' },
+        { value: '4', label: '4', description: 'Completely - Comprehensive evidence, fully effective' }
+      ];
+    }
+  } else if (q.responseType === 'yes_no') {
+    anchors = [
+      { value: '4', label: 'Yes, fully implemented', description: 'Requirement completely met, comprehensive evidence' },
+      { value: '3', label: 'Yes, partially', description: 'Requirement largely met, some gaps or exceptions' },
+      { value: '1', label: 'No, but planned', description: 'Work underway, timeline established' },
+      { value: '0', label: 'No', description: 'Requirement not met, no plans to address' },
+      { value: 'not_sure', label: 'Not sure', description: 'Insufficient information to determine' }
+    ];
+  } else if (q.responseType === 'percentage') {
+    anchors = [
+      { value: '0', label: '< 20%', description: 'Minimal reach, early rollout only' },
+      { value: '1', label: '20-40%', description: 'Limited coverage, selected demographics' },
+      { value: '2', label: '40-60%', description: 'Moderate coverage, expanding' },
+      { value: '3', label: '60-80%', description: 'Substantial coverage, most regions' },
+      { value: '4', label: '80-100%', description: 'Comprehensive coverage, universal' }
+    ];
+  }
+
+  return {
+    ...q,
+    id: index,
+    responseType: q.responseType as 'likert' | 'yes_no' | 'percentage',
+    anchors,
+  };
+});
 
 export const groupedByPillar = questions.reduce((acc, question) => {
   if (!acc[question.pillar]) acc[question.pillar] = {};

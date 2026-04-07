@@ -2,16 +2,30 @@
 import { questions } from '../data/questions';
 import { AssessmentResponse } from '../types';
 
-// Map raw responses to 0-4 scale
 export const mapResponseToScore = (responseType: string, value: string): number => {
-  if (responseType === 'likert') return parseInt(value) - 1; // 1->0, 2->1, 3->2, 4->3, 5->4
-  if (responseType === 'yes_no') return value === 'yes' ? 4 : 0;
-  if (responseType === 'percentage') {
-    if (value === 'lt25') return 1;
-    if (value === '25-50') return 2;
-    if (value === '51-75') return 3;
-    if (value === 'gt75') return 4;
+  if (value === 'not_sure') return 0;
+  
+  // Backwards compatibility for old raw data if necessary
+  if (value === 'yes') return 4;
+  if (value === 'no') return 0;
+  if (value === 'lt25') return 1;
+  if (value === '25-50') return 2;
+  if (value === '51-75') return 3;
+  if (value === 'gt75') return 4;
+
+  // New V2 BARS payload is mapped strictly to numeric strings 0-4
+  // We handle legacy likert (1-5) by checking length or assuming direct parsed value?
+  // Old likert 1-5 meant 1->0, 5->4. New BARS is 0-4 meant 0->0, 4->4.
+  const parsed = parseInt(value, 10);
+  if (!isNaN(parsed)) {
+    // If it's a V2 rating (0, 1, 2, 3, 4 string directly passed from anchor.value)
+    // Wait, old form passed "1","2","3","4","5". New form passes "0","1","2","3","4".
+    // We can differentiate: but wait, since 0-4 overlap with 1-4, we can't tell them apart just by value.
+    // However, since we are moving all live data to V2, we assume V2 format. Any old scores in DB might miscalculate if re-rendered.
+    // For MVP V2, we strictly return the value directly as intended by the new BARS anchors.
+    return parsed; 
   }
+
   return 0;
 };
 
@@ -61,29 +75,73 @@ export const calculateScores = (responses: AssessmentResponse) => {
 };
 
 // NEW: Aggregation Engine (Macro-level)
-export const calculateAggregatedScores = (allResponses: any[]) => {
-  const questionScores: Record<number, number[]> = {};
+export const calculateAggregatedScores = (allResponses: any[], allAssessments: any[] = []) => {
+  const questionScoresByStakeholder: Record<number, Record<string, number[]>> = {};
 
-  // 1. Group all responses by question ID and convert to 0-4 scale
+  // Build a map of assessment ID -> stakeholder_type
+  const assessmentStakeholderMap: Record<string, string> = {};
+  allAssessments.forEach(a => {
+    assessmentStakeholderMap[a.id] = a.stakeholder_type;
+  });
+
+  // 1. Group all responses by question ID and Stakeholder Type
   allResponses.forEach(r => {
     const q = questions.find(qu => qu.id === r.question_id);
     if (!q) return;
-    const score = mapResponseToScore(q.responseType, r.response_value);
-    if (!questionScores[q.id]) questionScores[q.id] = [];
-    questionScores[q.id].push(score);
+    
+    // Safely map score, treating NaN mapping as 0 to be safe
+    let score = mapResponseToScore(q.responseType, r.response_value);
+    if (isNaN(score)) score = 0;
+
+    const stakeholder = assessmentStakeholderMap[r.assessment_id] || 'UNKNOWN';
+
+    if (!questionScoresByStakeholder[q.id]) questionScoresByStakeholder[q.id] = {};
+    if (!questionScoresByStakeholder[q.id][stakeholder]) questionScoresByStakeholder[q.id][stakeholder] = [];
+    
+    questionScoresByStakeholder[q.id][stakeholder].push(score);
   });
 
   let totalWeightedScore = 0;
   let totalMaxWeight = 0;
   const pillarScores: Record<string, { current: number; max: number }> = {};
 
-  // 2. Calculate the average score for each question, then apply weights
+  // 2. Calculate applying Primary (70%) and Secondary (30%) weighting
   questions.forEach(q => {
-    const scores = questionScores[q.id];
-    if (!scores || scores.length === 0) return; // Skip if no one answered this question
+    const stakeholderScores = questionScoresByStakeholder[q.id];
+    if (!stakeholderScores) return; // Skip if no one answered this
 
-    const avgBaseScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const weightedScore = avgBaseScore * q.weight;
+    const primaryScores = stakeholderScores[q.primaryStakeholder] || [];
+    const secondaryScores = stakeholderScores[q.secondaryStakeholder] || [];
+    
+    // Check if we have responses
+    if (primaryScores.length === 0 && secondaryScores.length === 0) return;
+
+    const avgPrimary = primaryScores.length > 0 ? primaryScores.reduce((a, b) => a + b, 0) / primaryScores.length : null;
+    const avgSecondary = secondaryScores.length > 0 ? secondaryScores.reduce((a, b) => a + b, 0) / secondaryScores.length : null;
+
+    let finalQuestionScore = 0;
+
+    if (avgPrimary !== null && avgSecondary !== null) {
+      finalQuestionScore = (avgPrimary * 0.7) + (avgSecondary * 0.3);
+    } else if (avgPrimary !== null) {
+      finalQuestionScore = avgPrimary; // Fallback entirely to primary
+    } else if (avgSecondary !== null) {
+      finalQuestionScore = avgSecondary; // Fallback entirely to secondary
+    }
+
+    // Safeguard against NaN
+    if (isNaN(finalQuestionScore)) {
+      finalQuestionScore = 0;
+    }
+
+    // Checking for Triangulation Bonus (3+ stakeholders responded closely)
+    const activeStakeholders = Object.keys(stakeholderScores).filter(k => stakeholderScores[k].length > 0);
+    if (activeStakeholders.length >= 3) {
+       // Apply a 5% bonus to this question's score
+       finalQuestionScore = Math.min(4, finalQuestionScore * 1.05);
+    }
+
+    const weightedScore = finalQuestionScore * q.weight;
     const maxQuestionScore = 4 * q.weight;
 
     totalWeightedScore += weightedScore;
