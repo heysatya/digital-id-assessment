@@ -339,7 +339,7 @@ function AssessmentFormContent() {
                           <div className="p-6 sm:p-8 border-b border-slate-100 bg-white">
                             <div className="flex gap-4">
                               <div className="mt-1 flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">
-                                {q.id}
+                                {filteredQuestions.findIndex(fq => fq.id === q.id) + 1}
                               </div>
                               <div>
                                 <h4 className="text-lg font-semibold text-slate-900 mb-2 leading-snug">{q.question}</h4>
