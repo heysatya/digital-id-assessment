@@ -116,7 +116,7 @@ async function runStressTest() {
             .single();
 
         if (assessmentError || !assessment) {
-            console.error(`❌ Error creating assessment ${i}:`, assessmentError.message);
+            console.error(`❌ Error creating assessment ${i}:`, assessmentError?.message || 'Unknown Error');
             continue;
         }
 
