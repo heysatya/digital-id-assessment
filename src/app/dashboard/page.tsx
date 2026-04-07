@@ -50,23 +50,22 @@ export default function DashboardPage() {
     e.preventDefault();
     setLoading(true);
 
-    // --- DEV BYPASS FOR TESTING ---
-    if (process.env.NODE_ENV === 'development' && email === 'admin@test.local' && password === 'admin123') {
-      setIsAuthenticated(true);
-      setUserRole('admin');
-      setLoading(false);
-      return;
-    }
-    // -------------------------------
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      alert(error.message);
-    } else if (data.user) {
+      if (authError || !authData.user) {
+        alert("Invalid login credentials.");
+        setLoading(false);
+        return;
+      }
       setIsAuthenticated(true);
-      const role = await getRoleFromDB(data.user.id);
+      const role = await getRoleFromDB(authData.user.id);
       setUserRole(role);
+    } catch (err) {
+      alert("An unexpected error occurred.");
     }
     setLoading(false);
   };
