@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { calculateAggregatedScores } from '@/lib/scoring';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, BarChart, XAxis, YAxis, Tooltip, Bar } from 'recharts';
+import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, BarChart, XAxis, YAxis, Tooltip, Bar, Cell } from 'recharts';
 
 export default function DashboardPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -324,7 +324,7 @@ export default function DashboardPage() {
                       />
                       <Bar dataKey="score" radius={[0, 6, 6, 0]} fill="#2563eb" activeBar={{ fill: '#1d4ed8' }}>
                         {aggregatedData.pillarBreakdown.map((entry: any, index: number) => (
-                          <cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#6366f1'} />
+                          <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#6366f1'} />
                         ))}
                       </Bar>
                     </BarChart>
