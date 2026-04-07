@@ -96,35 +96,65 @@ function AssessmentFormContent() {
 
   const handleSubmit = async () => {
     if (!isComplete) return;
+    console.log("Submitting assessment...", { details, answers: Object.keys(responses).length, mode });
     setIsSubmitting(true);
 
-    const { data: assessment, error: assessmentError } = await supabase
-      .from('assessments')
-      .insert([{
-        respondent_name: details.respondent_name,
-        email: details.email,
-        phone: details.phone,
-        organization: details.organization,
-        stakeholder_type: details.stakeholder_type,
-        environment_mode: mode
-      }])
-      .select()
-      .single();
-
-    if (assessmentError || !assessment) {
-      console.error(assessmentError);
+    // Safety timeout: If Supabase hangs for more than 15s, throw an error
+    const timeout = setTimeout(() => {
+      alert("Submission timed out. This may be due to a poor connection or database RLS policies. Please check your data or try again.");
       setIsSubmitting(false);
-      return;
+    }, 15000);
+
+    try {
+      const { data: assessment, error: assessmentError } = await supabase
+        .from('assessments')
+        .insert([{
+          respondent_name: details.respondent_name,
+          email: details.email,
+          phone: details.phone,
+          organization: details.organization,
+          stakeholder_type: details.stakeholder_type,
+          environment_mode: mode
+        }])
+        .select()
+        .single();
+
+      if (assessmentError || !assessment) {
+        clearTimeout(timeout);
+        console.error("Profile storage error:", assessmentError);
+        alert(`Could not save profile: ${assessmentError?.message || 'Unknown error'}. This is often caused by Supabase RLS policies blocking public inserts.`);
+        setIsSubmitting(false);
+        return;
+      }
+
+      console.log("Profile saved, ID:", assessment.id);
+
+      const responseInserts = Object.entries(responses).map(([qId, val]) => ({
+        assessment_id: assessment.id,
+        question_id: parseInt(qId),
+        response_value: val,
+      }));
+
+      const { error: responsesError } = await supabase
+        .from('responses')
+        .insert(responseInserts);
+
+      clearTimeout(timeout);
+
+      if (responsesError) {
+        console.error("Answers storage error:", responsesError);
+        alert(`Profile saved but answers failed: ${responsesError.message}. Accessing the dashboard might show your profile without scores.`);
+        // We still redirect because partial success is better than no feedback
+      }
+
+      console.log("Redirecting to thank you...");
+      window.location.href = '/thank-you';
+    } catch (err: any) {
+      clearTimeout(timeout);
+      console.error("Submission crash:", err);
+      alert(`Fatal Submission Error: ${err.message || 'Check console for details'}`);
+      setIsSubmitting(false);
     }
-
-    const responseInserts = Object.entries(responses).map(([qId, val]) => ({
-      assessment_id: assessment.id,
-      question_id: parseInt(qId),
-      response_value: val,
-    }));
-
-    await supabase.from('responses').insert(responseInserts);
-    router.push(`/thank-you`);
   };
 
   return (
@@ -149,17 +179,24 @@ function AssessmentFormContent() {
 
               <div className="flex flex-col gap-1 mt-6">
                 {sections.map((sec, idx) => {
-                  let status = 'pending';
-                  if (idx === currentSectionIndex) status = 'active';
-                  else if (idx < currentSectionIndex) status = 'completed';
+                  const isActive = idx === currentSectionIndex;
 
-                  // Explicitly check profile completion
+                  // Granular completion for pillars
+                  let isCompleted = false;
+                  let answeredInSec = 0;
+                  let totalInSec = 0;
+
                   if (sec === 'profile') {
-                    if (isDetailsComplete && idx !== currentSectionIndex) status = 'completed';
+                    isCompleted = isDetailsComplete;
+                  } else if (sec === 'review') {
+                    isCompleted = isAllAnswered && hasConsented;
+                  } else {
+                    const pillarQuestions = filteredQuestions.filter(q => q.pillar === sec);
+                    totalInSec = pillarQuestions.length;
+                    answeredInSec = pillarQuestions.filter(q => responses[q.id]).length;
+                    // Only complete if we have questions AND all are answered
+                    isCompleted = totalInSec > 0 && answeredInSec === totalInSec;
                   }
-
-                  const isActive = status === 'active';
-                  const isCompleted = status === 'completed';
 
                   const getIcon = () => {
                     if (sec === 'profile') return <User className="w-4 h-4" />;
@@ -173,19 +210,32 @@ function AssessmentFormContent() {
                     <button
                       key={sec}
                       onClick={() => {
-                        // Prevent skipping ahead if profile isn't complete
                         if (sec !== 'profile' && !isDetailsComplete) return;
                         setCurrentSectionIndex(idx);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
-                      className={`flex items-center gap-3 w-full text-left p-3 rounded-lg transition-all duration-200 ease-in-out ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' :
-                        isCompleted ? 'text-slate-600 hover:bg-slate-100 cursor-pointer' :
-                          'text-slate-400 cursor-not-allowed'
+                      className={`flex flex-col gap-1 w-full text-left p-3 rounded-xl transition-all duration-200 ease-in-out ${isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' :
+                        'text-slate-600 hover:bg-slate-100 cursor-pointer'
                         }`}
                     >
-                      <div className={`p-1.5 rounded-md ${isActive ? 'bg-white/20' : isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100'}`}>
-                        {isCompleted && sec !== 'review' ? <CheckCircle2 className="w-4 h-4" /> : getIcon()}
+                      <div className="flex items-center gap-3">
+                        <div className={`p-1.5 rounded-md ${isActive ? 'bg-white/20' : isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100'}`}>
+                          {isCompleted && !isActive ? <CheckCircle2 className="w-4 h-4" /> : getIcon()}
+                        </div>
+                        <span className="font-bold text-xs uppercase tracking-wider truncate flex-1">{label}</span>
                       </div>
-                      <span className="font-medium text-sm truncate">{label}</span>
+
+                      {/* PILLAR PROGRESS SUB-TEXT */}
+                      {sec !== 'profile' && sec !== 'review' && totalInSec > 0 && (
+                        <div className="pl-11 pr-2 flex justify-between items-center w-full">
+                          <div className={`text-[10px] font-bold ${isActive ? 'text-blue-100' : isCompleted ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            {answeredInSec} / {totalInSec} ANSWERED
+                          </div>
+                          {!isCompleted && !isActive && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                          )}
+                        </div>
+                      )}
                     </button>
                   );
                 })}

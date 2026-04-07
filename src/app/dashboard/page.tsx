@@ -81,17 +81,39 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!isAuthenticated) return;
     async function fetchData() {
-      setLoading(true);
-      const { data: aData } = await supabase.from('assessments').select('*').order('created_at', { ascending: false });
-      const { data: rData } = await supabase.from('responses').select('*');
-      if (aData) setAssessments(aData);
-      if (rData) setAllResponses(rData);
-      setLoading(false);
+      try {
+        setLoading(true);
+        const { data, error } = await supabase
+          .from('assessments')
+          .select('*, responses(question_id, answer_value)')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        setAssessments(data || []);
+
+        // Intelligent Auto-Mode Selection
+        // If we have data in one mode but not the current activeMode, switch to it once
+        if (data && data.length > 0) {
+          const hasLive = data.some(a => a.environment_mode === 'live');
+          const hasTest = data.some(a => a.environment_mode === 'test');
+
+          if (!hasLive && hasTest && activeMode === 'live') {
+            setActiveMode('test');
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching assessments:', err);
+      } finally {
+        setLoading(false);
+      }
     }
+
     fetchData();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeMode]);
 
   const filteredAssessments = assessments.filter(a => a.environment_mode === activeMode);
+  const otherModeAssessments = assessments.filter(a => a.environment_mode !== activeMode);
+  const hasDataInOtherMode = otherModeAssessments.length > 0;
   const filteredAssessmentIds = filteredAssessments.map(a => a.id);
   const filteredResponses = allResponses.filter(r => filteredAssessmentIds.includes(r.assessment_id));
   const aggregatedData = filteredResponses.length > 0 ? calculateAggregatedScores(filteredResponses, filteredAssessments) : null;
@@ -161,9 +183,9 @@ export default function DashboardPage() {
   };
 
   // --- CYBER-GLASS RENDER VARIANTS ---
-  const fadeIn: any = { 
-    hidden: { opacity: 0, y: 20 }, 
-    show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } } 
+  const fadeIn: any = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
   };
 
   if (!isAuthenticated) {
@@ -254,84 +276,108 @@ export default function DashboardPage() {
               <div className="w-full h-[450px] bg-slate-200 rounded-2xl animate-pulse" />
             </div>
           </div>
-        ) : !aggregatedData ? (
+        ) : filteredAssessments.length === 0 ? (
           /* EMPTY STATE */
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center py-32 bg-white border border-slate-200 rounded-2xl shadow-sm">
-            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500 text-3xl mb-4 border border-blue-100">📋</div>
-            <h2 className="text-xl font-bold text-slate-700">No Assessments Received</h2>
-            <p className="text-slate-500 mt-2 font-medium">There is currently no completed assessment data in {activeMode} mode.</p>
-          </motion.div>
+          <div className="space-y-6">
+            {hasDataInOtherMode && (
+              <div
+                onClick={() => setActiveMode(activeMode === 'live' ? 'test' : 'live')}
+                className="cursor-pointer group p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 transition-colors hover:bg-amber-100"
+              >
+                <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 font-bold group-hover:scale-110 transition-transform">!</div>
+                <div>
+                  <p className="text-amber-800 font-bold text-sm">Found entries in {activeMode === 'live' ? 'TEST' : 'LIVE'} mode!</p>
+                  <p className="text-amber-600 text-xs mt-0.5">Click here to switch modes and view the submitted assessments.</p>
+                </div>
+              </div>
+            )}
+
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center py-24 bg-white border border-slate-200 rounded-2xl shadow-sm">
+              <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-500 text-3xl mb-4 border border-blue-100">📋</div>
+              <h2 className="text-xl font-bold text-slate-700">No {activeMode.toUpperCase()} Data</h2>
+              <p className="text-slate-500 mt-2 font-medium">There are currently no completed assessments in this mode.</p>
+            </motion.div>
+          </div>
         ) : (
           /* ACTIVE DATA DASHBOARD */
           <motion.div initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: 0.1 } } }} className="space-y-8">
 
             {/* ROW 1: PRIMARY METRICS */}
-            <motion.div variants={fadeIn} className="grid md:grid-cols-3 gap-6">
-              <div className="md:col-start-2 overflow-hidden bg-white border border-slate-200 rounded-2xl p-8 text-center flex flex-col justify-center shadow-sm transition-shadow hover:shadow-md">
-                <h3 className="text-slate-500 text-xs tracking-[0.2em] font-bold mb-4 uppercase">Overall Maturity Index</h3>
-                <div className="text-7xl font-black text-slate-900">
-                  {aggregatedData.overallScore} <span className="text-3xl text-slate-400">/ 4</span>
+            {aggregatedData ? (
+              <motion.div variants={fadeIn} className="grid md:grid-cols-3 gap-6">
+                <div className="md:col-start-2 overflow-hidden bg-white border border-slate-200 rounded-2xl p-8 text-center flex flex-col justify-center shadow-sm transition-shadow hover:shadow-md">
+                  <h3 className="text-slate-500 text-xs tracking-[0.2em] font-bold mb-4 uppercase">Overall Maturity Index</h3>
+                  <div className="text-7xl font-black text-slate-900">
+                    {aggregatedData.overallScore} <span className="text-3xl text-slate-400">/ 4</span>
+                  </div>
+                  <div className="mt-6 inline-flex items-center mx-auto px-5 py-1.5 rounded-full bg-blue-100 text-blue-700 text-sm font-bold border border-blue-200">
+                    Level: {aggregatedData.maturityLevel}
+                  </div>
+                  <p className="text-slate-500 font-medium text-xs mt-6 uppercase tracking-widest">Based on {filteredAssessments.length} Responses</p>
                 </div>
-                <div className="mt-6 inline-flex items-center mx-auto px-5 py-1.5 rounded-full bg-blue-100 text-blue-700 text-sm font-bold border border-blue-200">
-                  Level: {aggregatedData.maturityLevel}
-                </div>
-                <p className="text-slate-500 font-medium text-xs mt-6 uppercase tracking-widest">Based on {filteredAssessments.length} Responses</p>
+              </motion.div>
+            ) : (
+              <div className="p-8 bg-blue-50 border border-blue-100 rounded-2xl text-center">
+                <p className="text-blue-700 font-medium">Wait! Profiles have been recorded, but we are missing response data for scoring analysis.</p>
+                <p className="text-blue-500 text-sm mt-1">This usually means the database RLS policies are blocking public users from saving their answers correctly.</p>
               </div>
-            </motion.div>
+            )}
 
             {/* ROW 2: DATA VISUALIZATION (RECHARTS) */}
-            <motion.div variants={fadeIn} className="grid lg:grid-cols-2 gap-8">
-
-              {/* RADAR CHART PANEL */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <h3 className="text-slate-800 font-bold mb-6 flex items-center gap-2">Pillar Footprint</h3>
-                <div className="h-[400px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart cx="50%" cy="50%" outerRadius="55%" data={aggregatedData.pillarBreakdown}>
-                      <PolarGrid stroke="#e2e8f0" />
-                      <PolarAngleAxis 
-                        dataKey="name" 
-                        tick={({ payload, x, y, textAnchor, stroke, radius }: any) => {
-                          const parts = payload.value.split(' · ');
-                          return (
-                            <text radius={radius} stroke={stroke} x={x} y={y} textAnchor={textAnchor} fill="#64748b" fontSize={11} fontWeight={500}>
-                              <tspan x={x} dy="0">{parts[0]}</tspan>
-                              {parts[1] && <tspan x={x} dy="14">{parts[1]}</tspan>}
-                            </text>
-                          );
-                        }} 
-                      />
-                      <PolarRadiusAxis angle={30} domain={[0, 4]} />
-                      <Tooltip contentStyle={{ backgroundColor: '#fff', borderColor: '#cbd5e1', borderRadius: '8px' }} />
-                      <Radar name="Maturity" dataKey="score" stroke="#2563eb" strokeWidth={2} fill="#3b82f6" fillOpacity={0.4} />
-                    </RadarChart>
-                  </ResponsiveContainer>
+            {aggregatedData && (
+              <motion.div variants={fadeIn} className="grid lg:grid-cols-2 gap-8">
+                {/* RADAR CHART PANEL */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                  <h3 className="text-slate-800 font-bold mb-6 flex items-center gap-2">Pillar Footprint</h3>
+                  <div className="h-[400px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart cx="50%" cy="50%" outerRadius="55%" data={aggregatedData.pillarBreakdown}>
+                        <PolarGrid stroke="#e2e8f0" />
+                        <PolarAngleAxis
+                          dataKey="name"
+                          tick={({ payload, x, y, textAnchor, stroke, radius }: any) => {
+                            const parts = payload.value.split(' · ');
+                            return (
+                              <text radius={radius} stroke={stroke} x={x} y={y} textAnchor={textAnchor} fill="#64748b" fontSize={11} fontWeight={500}>
+                                <tspan x={x} dy="0">{parts[0]}</tspan>
+                                {parts[1] && <tspan x={x} dy="14">{parts[1]}</tspan>}
+                              </text>
+                            );
+                          }}
+                        />
+                        <PolarRadiusAxis angle={30} domain={[0, 4]} />
+                        <Tooltip contentStyle={{ backgroundColor: '#fff', borderColor: '#cbd5e1', borderRadius: '8px' }} />
+                        <Radar name="Maturity" dataKey="score" stroke="#2563eb" strokeWidth={2} fill="#3b82f6" fillOpacity={0.4} />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              </div>
 
-              {/* BAR CHART PANEL */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                <h3 className="text-slate-800 font-bold mb-6 flex items-center gap-2">Pillar Average Scores</h3>
-                <div className="h-[400px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={aggregatedData.pillarBreakdown} layout="vertical" margin={{ top: 10, right: 40, left: 0, bottom: 10 }}>
-                      <XAxis type="number" domain={[0, 4]} tick={{ fill: '#64748b', fontSize: 11 }} />
-                      <YAxis type="category" dataKey="name" width={180} tick={{ fill: '#475569', fontSize: 12, fontWeight: 500 }} />
-                      <Tooltip
-                        cursor={{ fill: '#f1f5f9' }}
-                        formatter={(value: any) => [`${value} / 4.0`, 'Score']}
-                        contentStyle={{ backgroundColor: '#fff', borderColor: '#cbd5e1', borderRadius: '8px', color: '#1e293b', fontWeight: 'bold' }}
-                      />
-                      <Bar dataKey="score" radius={[0, 6, 6, 0]} fill="#2563eb" activeBar={{ fill: '#1d4ed8' }}>
-                        {aggregatedData.pillarBreakdown.map((entry: any, index: number) => (
-                          <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#6366f1'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+                {/* BAR CHART PANEL */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                  <h3 className="text-slate-800 font-bold mb-6 flex items-center gap-2">Pillar Average Scores</h3>
+                  <div className="h-[400px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={aggregatedData.pillarBreakdown} layout="vertical" margin={{ top: 10, right: 40, left: 0, bottom: 10 }}>
+                        <XAxis type="number" domain={[0, 4]} tick={{ fill: '#64748b', fontSize: 11 }} />
+                        <YAxis type="category" dataKey="name" width={180} tick={{ fill: '#475569', fontSize: 12, fontWeight: 500 }} />
+                        <Tooltip
+                          cursor={{ fill: '#f1f5f9' }}
+                          formatter={(value: any) => [`${value} / 4.0`, 'Score']}
+                          contentStyle={{ backgroundColor: '#fff', borderColor: '#cbd5e1', borderRadius: '8px', color: '#1e293b', fontWeight: 'bold' }}
+                        />
+                        <Bar dataKey="score" radius={[0, 6, 6, 0]} fill="#2563eb" activeBar={{ fill: '#1d4ed8' }}>
+                          {aggregatedData.pillarBreakdown.map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#3b82f6' : '#6366f1'} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
+              </motion.div>
+            )}
+
 
             {/* DATA TABLE */}
             <motion.div variants={fadeIn} className="mt-12 space-y-4">
