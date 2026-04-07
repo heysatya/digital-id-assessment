@@ -83,26 +83,32 @@ export default function DashboardPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        const { data, error } = await supabase
+        const { data: aData, error: aError } = await supabase
           .from('assessments')
-          .select('*, responses(question_id, answer_value)')
+          .select('*')
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        setAssessments(data || []);
+        const { data: rData, error: rError } = await supabase
+          .from('responses')
+          .select('*');
+
+        if (aError) throw aError;
+        if (rError) throw rError;
+
+        setAssessments(aData || []);
+        setAllResponses(rData || []);
 
         // Intelligent Auto-Mode Selection
-        // If we have data in one mode but not the current activeMode, switch to it once
-        if (data && data.length > 0) {
-          const hasLive = data.some(a => a.environment_mode === 'live');
-          const hasTest = data.some(a => a.environment_mode === 'test');
+        if (aData && aData.length > 0) {
+          const hasLive = aData.some(a => a.environment_mode === 'live');
+          const hasTest = aData.some(a => a.environment_mode === 'test');
 
           if (!hasLive && hasTest && activeMode === 'live') {
             setActiveMode('test');
           }
         }
       } catch (err) {
-        console.error('Error fetching assessments:', err);
+        console.error('Error fetching dashboard data:', err);
       } finally {
         setLoading(false);
       }
